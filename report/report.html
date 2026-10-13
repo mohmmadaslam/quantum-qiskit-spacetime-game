@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Detect or Discard: Report</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm; }
+  body { font: 10.3pt/1.45 -apple-system, "Helvetica Neue", Arial, sans-serif; color: #0f172a; }
+  h1 { font-size: 21pt; margin: 0 0 2pt; }
+  h2 { font-size: 13.5pt; margin: 15pt 0 4pt; border-bottom: 1.5px solid #cbd5e1; padding-bottom: 2pt; }
+  h3 { font-size: 11pt; margin: 10pt 0 2pt; }
+  .sub { color: #475569; margin-bottom: 8pt; }
+  table { border-collapse: collapse; width: 100%; margin: 6pt 0; font-size: 9.2pt; }
+  th, td { border: 1px solid #cbd5e1; padding: 3pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #f1f5f9; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  img { max-width: 100%; }
+  .fig { margin: 6pt 0; page-break-inside: avoid; }
+  .cap { font-size: 8.8pt; color: #475569; }
+  .box { background: #f1f5f9; border-left: 4px solid #2563eb; padding: 6pt 10pt; margin: 8pt 0; page-break-inside: avoid; }
+  .warn { border-left-color: #d97706; }
+  code { font: 9pt Menlo, monospace; background: #f1f5f9; padding: 0 2px; }
+  .two { display: flex; gap: 10pt; } .two > div { flex: 1; }
+  ul { margin: 3pt 0 3pt 16pt; padding: 0; } li { margin: 1.5pt 0; }
+  .pb { page-break-before: always; }
+</style></head><body>
+
+<h1>Detect or Discard</h1>
+<div class="sub">A game built on spacetime-code error detection, with every score computed in Qiskit.<br>
+Qiskit Fall Fest 2026 Hackathon, Advanced Track. Report accompanying the code and notebook in this repository.</div>
+
+<div class="box"><b>In one paragraph.</b> We built a playable game in which you protect a 6-qubit circuit by attaching spacetime
+Pauli-check ancillas to chosen wires. Each placement is run through the real pipeline (payload, checks from
+<code>qiskit-paulice</code>, ancilla readout, post-selection) on the Aer simulator, and the score is computed from the
+resulting fidelity and kept-shot fraction. On the standard noise model (1% two-qubit gate error) the best placement
+raises the post-selected fidelity from <b>0.771 to 0.902</b> while keeping <b>81.0%</b> of shots, a <b>+10.7%</b> gain in
+shot efficiency (<i>kept</i>&times;<i>F</i>&sup2;). The trade-off is <b>not obvious</b>: the best placement of two checks
+beats the worst by 10%, using all six wires is no better than using none, a shallow circuit is best left unprotected,
+and every T/T&dagger; pair halves the pool of valid checks.</div>
+
+<h2>1. Problem and where this sits</h2>
+<p>Quantum error <b>detection</b> flags the errors its ancilla checks can see and discards those shots; errors the checks do not cover go through.
+It repairs nothing. This differs from error <b>mitigation</b> (correcting an <i>estimate</i> in post-processing at the cost of more circuits) and from
+error <b>correction</b> (encoding one logical qubit in many physical qubits and decoding while the computation runs). The game is built entirely
+around detection: &ldquo;low-overhead error detection with spacetime codes&rdquo;. A discarded shot is the price of a caught error, which gives the game its trade-off.</p>
+<div class="fig"><img src="../figures/pipeline.png" alt="pipeline"><div class="cap">The pipeline the brief asks the game to expose; the game lets the player decide step 2.</div></div>
+
+<h2>2. Method</h2>
+<h3>Payload (step 1)</h3>
+<p>A 6-qubit <b>echo circuit</b>: encode the bitstring 010101, apply a random brickwork Clifford <i>C</i> (5 layers; gates h, s, sx, cx), then <i>C</i>&dagger;.
+The ideal output is a single known bitstring, so any deviation is noise. (A bare random Clifford spreads its output uniformly; a distribution fidelity
+then hides the noise: we measured F = 0.999 at 1% noise and discarded that design.) Width 6, depth 21 (22 transpiled), 26 CNOTs.
+<b>T-doped family:</b> <i>m</i> T gates in the middle of <i>C</i> and the matching T&dagger; in the mirror half, giving 2<i>m</i> = 0, 2, 4, 8 (up to 10) non-Clifford gates while the ideal output stays the same bitstring, so fidelity is comparable across T counts and T gates affect which checks are <i>valid</i>.</p>
+<h3>Reference and fidelity (step 2)</h3>
+<p>Ideal distribution: <b>stabilizer simulation</b> for the Clifford circuit (<code>StabilizerState</code>), <b>statevector</b> simulation for T-doped circuits.
+Fidelity: classical Hellinger fidelity <i>F</i> = (&Sigma;<sub>x</sub>&radic;(p<sub>x</sub>q<sub>x</sub>))&sup2; between the data-bit distribution and the ideal.
+Because the ideal is one bitstring, <i>F</i> is the probability of the right answer, and the formula handles the T-doped case unchanged.
+Uncertainty: bootstrap, 100 resamples of the kept counts; 20&thinsp;000 shots per configuration. A post-selected fidelity is always reported with its kept fraction.</p>
+<h3>Checks (step 3)</h3>
+<p><b>Clifford payload:</b> <code>add_pauli_checks</code> from <code>qiskit-paulice</code> v0.2.1, one check per target wire chosen by the player (cost = &ldquo;gamma&rdquo;, the inverse-channel overhead of the noise the checks miss).
+<b>T-doped payload:</b> paulice accepts Cliffords only (we confirm it raises an error), so checks are hand-made. A spacetime check is a pair (<i>L</i>, <i>R</i>) with <i>U L U</i>&dagger; = &plusmn;<i>R</i>; the ancilla (|+&rang;) controls <i>L</i> before and <i>R</i> after the payload and is read in X.
+Across a T gate the check is valid <b>only if its Pauli is I or Z there</b>, because T is diagonal and commutes with Z but maps X to (X+Y)/&radic;2. We enumerate all 4<sup>6</sup>&minus;1 left Paulis, propagate each with Clifford segments, and keep valid ones; each target wire then gets the cheapest valid, independent check that <i>commutes</i> with the previous ones
+(anticommuting checks disturb each other even without noise: a bug our noiseless self-test caught). The pool shrinks as <b>4095 &rarr; 2047 &rarr; 1023 &rarr; 255 &rarr; 127</b> for 0, 2, 4, 8, 10 non-Clifford gates.</p>
+<h3>Noise (step 4)</h3>
+<p>The brief's example model, used for <b>both</b> paulice (to place checks) and Aer (to simulate): every CNOT suffers a Pauli error of total probability <i>p</i><sub>2</sub> = 1% spread uniformly over the 15 non-identity two-qubit Paulis, and every measurement flips with probability 0.5%. Single-qubit gates, including T, are noiseless (as in paulice&rsquo;s own model).
+All controlled-Pauli gates of every check are built from the same noisy CNOT, so checks pay for their own gates. If the organizers publish another model it is a one-line change (<code>P2_DEFAULT</code>).</p>
+<h3>Measure and compare (steps 5&ndash;6)</h3>
+<p>For each configuration we record fidelity without and with checks, kept fraction, ancillas, two-qubit gates and depth. We define <b>efficiency = kept &times; F&sup2;</b>: to estimate an observable damped by about <i>F</i> the variance scales as 1/(kept&middot;N&middot;F&sup2;), so this is the inverse of the raw shots needed for a fixed precision. It is a modelling choice (stated in the game); fidelity and kept fraction are always shown separately.</p>
+
+<h2>3. Results</h2>
+<h3>3.1 The trade-off and the best configuration</h3>
+<div class="two"><div class="fig"><img src="../figures/tradeoff_cloud.png"><div class="cap">All 64 placements (Clifford payload, p<sub>2</sub> = 1%). Each check raises fidelity and lowers kept fraction; the best point sits on the highest iso-efficiency curve.</div></div>
+<div class="fig"><img src="../figures/placement.png"><div class="cap">Same number of checks, different wires. Placement changes efficiency by up to 10% at two checks.</div></div></div>
+<table>
+<tr><th>Configuration (Clifford, p<sub>2</sub>=1%)</th><th class="n">F post</th><th class="n">kept</th><th class="n">efficiency</th><th class="n">ancillas</th><th class="n">CNOTs</th><th class="n">depth</th></tr>
+<tr><td>no checks</td><td class="n">0.771</td><td class="n">100%</td><td class="n">0.595</td><td class="n">0</td><td class="n">26</td><td class="n">22</td></tr>
+<tr><td><b>best: checks on wires 2, 3</b></td><td class="n"><b>0.902</b></td><td class="n"><b>81.0%</b></td><td class="n"><b>0.658</b> (+10.7%)</td><td class="n">2</td><td class="n">31</td><td class="n">39</td></tr>
+<tr><td>worst two-check placement (wires 0, 5)</td><td class="n">0.823</td><td class="n">88.0%</td><td class="n">0.596 (+0.1%)</td><td class="n">2</td><td class="n">31</td><td class="n">36</td></tr>
+<tr><td>three checks on wires 0,1,2 (prefix)</td><td class="n">0.910</td><td class="n">76.0%</td><td class="n">0.630 (+5.9%)</td><td class="n">3</td><td class="n">36</td><td class="n">49</td></tr>
+<tr><td>checks on all six wires</td><td class="n">0.946</td><td class="n">65.9%</td><td class="n">0.590 (&minus;0.8%)</td><td class="n">6</td><td class="n">45</td><td class="n">55</td></tr>
+</table>
+<p><b>Why the best configuration wins.</b> The numbers show the mechanism, even though we did not instrument which errors each check catches: fidelity after post-selection keeps rising with every check, but the fidelity of <i>all</i> shots falls (0.771 &rarr; 0.681 at six checks) because each check adds noisy CNOTs, and kept shots fall steadily. Efficiency therefore peaks at 2&ndash;3 checks and is back at baseline with six. Placement matters because checks on different wires cover different parts of the circuit; we suspect overlapping coverage is what makes the worst pair (wires 0 and 5) add almost nothing, but we have not tested that.
+Seed-to-seed repeatability (5 simulator seeds, no checks / four checks): efficiency 0.5938&plusmn;0.0007 and 0.6289&plusmn;0.0026, so the differences above are real.</p>
+
+<h3>3.2 Noise strength and depth</h3>
+<div class="fig"><img src="../figures/noise_sweep.png"><div class="cap">Left: efficiency relative to no checks vs number of checks, for six noise levels. Right: gain at the best number of checks.</div></div>
+<p>The gain from checks grows with noise, from +2.2% at p<sub>2</sub>=0.25% to +11.8% at 3%, and the best number of checks rises from 3 to 4. Depth matters even more:</p>
+<div class="fig"><img src="../figures/depth_sweep.png"><div class="cap">Depth sweep at p<sub>2</sub>=1%. For depth &le; 3 (&le; 16 CNOTs) the best choice is <b>no checks</b>; at depth 12 the gain reaches +36%.</div></div>
+
+<h3>3.3 Clifford vs T-doped</h3>
+<div class="fig"><img src="../figures/t_sweep.png"><div class="cap">Hand-made checks for every T count (same machinery, so T counts are comparable). Without checks the fidelity is equal (0.769&ndash;0.771); with checks the T-doped circuits reach less.</div></div>
+<table>
+<tr><th>non-Clifford gates</th><th class="n">0</th><th class="n">2</th><th class="n">4</th><th class="n">8</th></tr>
+<tr><td>valid left Paulis (of 4095)</td><td class="n">4095</td><td class="n">2047</td><td class="n">1023</td><td class="n">255</td></tr>
+<tr><td>F post, 4 checks (wires 0&ndash;3)</td><td class="n">0.934</td><td class="n">0.916</td><td class="n">0.906</td><td class="n">0.876</td></tr>
+<tr><td>best efficiency (best number of checks)</td><td class="n">0.685 (4)</td><td class="n">0.661 (5)</td><td class="n">0.648 (3)</td><td class="n">0.597 (2)</td></tr>
+</table>
+<p><b>Answer to the brief&rsquo;s question.</b> Comparing a Clifford-only circuit with its T-doped versions: T gates do not change the unprotected fidelity here (they are noiseless and mirrored), but they remove checks, so the protectable fraction shrinks and the best reachable trade-off gets worse with every T/T&dagger; pair. At 8 non-Clifford gates only 255 of 4095 left Paulis remain valid, four checks give <i>F</i> = 0.876 and the best configuration is barely above no checks (0.597 vs 0.592). Detection is cheap exactly when the circuit is Clifford.</p>
+
+<h3>3.4 A surprise: paulice vs cheap hand-made checks</h3>
+<div class="fig"><img src="../figures/paulice_vs_hand.png"><div class="cap">Same Clifford payload, checks on wires 0..k&minus;1. paulice reaches slightly higher post-selected fidelity; hand-made checks use fewer CNOTs and keep more shots.</div></div>
+<p>With four checks paulice gives <i>F</i> = 0.943 using 39 CNOTs (efficiency 0.628); our cheapest-valid hand-made checks give 0.934 with 30 CNOTs (efficiency 0.685). paulice optimises coverage of undetected noise (its &ldquo;gamma&rdquo; falls from 1.78 to 1.11), not gate cost, and on this small echo circuit a cheap check set gets most of that coverage for fewer gates. We did not tune paulice&rsquo;s options (<code>method</code>, <code>cost="LER"</code>), so this is a statement about default settings and this payload, not a general ranking. The game uses paulice on the Clifford levels (as the brief intends) and hand-made checks on T levels; cross-level comparisons of the two therefore mix methods, and 3.3 uses hand-made checks throughout for that reason.</p>
+
+<h2>4. The game</h2>
+<p><b>Detect or Discard</b> (<code>streamlit run game/app.py</code>): six levels, each a payload plus a noise setting plus an ancilla budget. The player ticks the wires to protect and presses <i>Run on Qiskit</i>. The board shows the circuit (T gates in orange) with a green band for every check. The game then shows fidelity, kept shots, cost, a score and stars, an explanation generated from the numbers, and the cloud of all placements with the player&rsquo;s attempts.</p>
+<table>
+<tr><th>Game rule</th><th>Physics it encodes</th></tr>
+<tr><td>Ticking a wire adds a check ancilla</td><td>A spacetime Pauli check (paulice on Clifford levels, hand-made across T gates) whose ancilla entangles with the data at start and end and is read in X</td></tr>
+<tr><td>Flagged shots disappear</td><td>Post-selection on the syndrome: detection, not correction</td></tr>
+<tr><td>Shots kept falls as you add checks</td><td>Every check adds noisy CNOTs; a non-trivial syndrome discards the shot</td></tr>
+<tr><td>Ancilla budget</td><td>Qubits are the scarce resource</td></tr>
+<tr><td>Score = 100 &times; efficiency / best possible under the budget</td><td>Inverse raw-shot cost for fixed precision; &ldquo;best possible&rdquo; is the maximum over all 64 placements, computed from Qiskit runs. Stars at 85%, 95%, 98.5% of the optimum</td></tr>
+<tr><td>Level 2, Short Sprint (depth 2)</td><td>Best move = no check (3.2)</td></tr>
+<tr><td>Level 3, Storm (2% noise)</td><td>Checks pay off more as noise grows (3.2)</td></tr>
+<tr><td>Level 4, Deep Dive (depth 8)</td><td>Gain +24% (3.2)</td></tr>
+<tr><td>Levels 5&ndash;6 (4 and 8 T/T&dagger;)</td><td>T gates restrict which checks are valid (3.3)</td></tr>
+</table>
+<div class="two"><div class="fig"><img src="../figures/game/l1_best.png" style="max-height:330pt;object-fit:cover;object-position:top"><div class="cap">Level 1 solved: wires 2 and 3.</div></div>
+<div class="fig"><img src="../figures/game/l5_trap.png" style="max-height:330pt;object-fit:cover;object-position:top"><div class="cap">Level 5: T gates (orange) and hand-made checks.</div></div></div>
+<p>The scores shown are table lookups of precomputed Qiskit runs (<code>results/landscape.csv</code>, 8 levels &times; 64 placements), with a toggle that re-runs the chosen placement live on Aer in a separate process; both give the same numbers up to the fixed seeds. Nothing is hand-set.</p>
+
+<h2>5. Validity checks and honest limitations</h2>
+<ul>
+<li><b>Noiseless self-test.</b> Every hand-made check set (4 T counts &times; 64 target subsets = 256 configurations) flags zero shots when noise is off, with fidelity 1.0 (<code>results/validity_noiseless.csv</code>). The test caught one real bug (anticommuting checks); reviewing the noise model caught another (a controlled-Z that had bypassed the noise, which made hand-made checks look unfairly cheap).</li>
+<li><b>Measure design.</b> A first version with a random-Clifford payload gave F = 0.999 regardless of noise; a version with a mid-circuit X-pattern made the T-doped ideal output spread out so that fidelity <i>rose</i> with T count. Both artefacts are why the echo design is used.</li>
+<li><b>Scope.</b> One 6-qubit payload family, one circuit seed, one noise family (two-qubit depolarising + readout; no idle or single-qubit noise, T gates noiseless), simulation only. The absolute numbers depend on these; the pattern (interior optimum, placement sensitivity, gain growing with noise and depth, T gates removing checks) is the result. The T-doped circuits echo by design, which real T-doped algorithms do not.</li>
+<li><b>Score choice.</b> kept&times;F&sup2; is our modelling choice; a different weighting would move the optimum (the underlying fidelity, kept and cost are all shown). The gains near the optimum are modest (5&ndash;11% at 1% noise), not dramatic.</li>
+<li><b>Not done.</b> No real-hardware runs, no tuning of paulice options, no larger circuits, no learned-noise (Pauli-Lindblad) model from a backend.</li>
+</ul>
+
+<h2>6. Reproduce</h2>
+<p><code>pip install -r requirements.txt</code> &middot; <code>python src/run_experiments.py</code> (about 5 minutes; writes <code>results/*.csv</code>) &middot; <code>jupyter nbconvert --execute notebook.ipynb</code> (25 s) &middot; <code>streamlit run game/app.py</code>.
+Software: Python 3.13, Qiskit 2.5.2, Qiskit Aer 0.17.2, qiskit-paulice 0.2.1. All randomness is seeded.</p>
+<p class="cap">References: Martiel &amp; Javadi, spacetime codes for error detection (arXiv:2504.15725); qiskit-paulice documentation and tutorial; Litinski, &ldquo;A Game of Surface Codes&rdquo;, Quantum 3, 128 (2019).</p>
+</body></html>
