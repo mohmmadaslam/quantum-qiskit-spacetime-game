@@ -1,5 +1,8 @@
 # Detect or Discard
 
+
+Live: https://quantum-qiskit-spacetime-game.streamlit.app/
+
 **Qiskit Fall Fest 2026 Hackathon, Advanced Track: gamifying error detection with spacetime codes.**
 
 A game in which you protect a 6-qubit circuit by attaching spacetime-Pauli-check ancillas to chosen wires.
