@@ -10,7 +10,7 @@ Nothing is hand-set.
 | Deliverable | File |
 |---|---|
 | Code (physics core, experiments, game) | `src/`, `game/` |
-| Recorded presentation (7 min) | `presentation.mp4` |
+| Recorded presentation (7 min) | `presentation_v1.mp4` |
 | Written report | `report.pdf` (source: `report/report.html`) |
 | Reproducible notebook (the six steps of the brief) | `notebook.ipynb` |
 
