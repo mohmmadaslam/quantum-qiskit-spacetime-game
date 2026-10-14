@@ -1,7 +1,9 @@
 # Detect or Discard
 
 
-Live: https://quantum-qiskit-spacetime-game.streamlit.app/
+Live Game: https://quantum-qiskit-spacetime-game.streamlit.app/
+
+Video: https://youtu.be/yo-h-9YhkkQ
 
 **Qiskit Fall Fest 2026 Hackathon, Advanced Track: gamifying error detection with spacetime codes.**
 
