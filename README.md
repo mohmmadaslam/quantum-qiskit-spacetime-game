@@ -3,7 +3,20 @@
 
 Live Game: https://quantum-qiskit-spacetime-game.streamlit.app/
 
-Video: https://youtu.be/yo-h-9YhkkQ
+## 🎥 Project Demo
+
+
+<p align="center">
+  <a href="https://youtu.be/yo-h-9YhkkQ">
+    <img src="https://img.youtube.com/vi/yo-h-9YhkkQ/0.jpg"
+         alt="I Built a Quantum Error Detection Game with Qiskit - Detect or Discard"
+         width="700">
+  </a>
+</p>
+
+<p align="center">
+  ▶️ <a href="https://youtu.be/yo-h-9YhkkQ"><b>Watch the Quantum Error Detection Game with Qiskit on YouTube</b></a>
+</p>
 
 **Qiskit Fall Fest 2026 Hackathon, Advanced Track: gamifying error detection with spacetime codes.**
 
